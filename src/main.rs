@@ -1,11 +1,11 @@
 use std::{
-    collections::{hash_map::DefaultHasher, HashSet},
+    collections::{hash_map::DefaultHasher, HashMap},
     hash::{Hash, Hasher},
 };
 
 type Coord = (u8, u8, u8);
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone)]
 struct Model {
     max: Coord,
     data: Vec<Coord>,
@@ -75,10 +75,12 @@ impl Model {
             Ok(_) => None,
         }
     }
-    fn add_cubes(&self, set: &mut HashSet<Model>) {
-        let insert = |s: &mut HashSet<Model>, o: Option<Model>| match o {
-            Some(m) => s.insert(m),
-            None => false,
+    fn add_cubes(&self, set: &mut HashMap<u64, Model>) {
+        let insert = |s: &mut HashMap<u64, Model>, o: Option<Model>| match o {
+            Some(m) => {
+                s.insert(m.hash(), m);
+            }
+            None => {}
         };
 
         for &cube in self.data.iter() {
@@ -91,7 +93,7 @@ impl Model {
         }
     }
     fn rotations(&self) -> Vec<Model> {
-        let mut rotations = Vec::new();
+        let mut rotations = Vec::with_capacity(24);
 
         // Define rotation functions for each axis
         let rotate_coord_x = |(x, y, z): Coord, (_, my, _): Coord| (x, z, my - y);
@@ -178,11 +180,9 @@ impl Model {
 
         rotations
     }
-}
-
-impl Hash for Model {
-    fn hash<H: Hasher>(&self, state: &mut H) {
+    fn hash(&self) -> u64 {
         // TODO: rotations do not have to be stored seperately
+        // TODO: can the voxel vec be hashed without being sorted?
         self.rotations()
             .iter()
             .map(|rot| {
@@ -191,46 +191,23 @@ impl Hash for Model {
                 hash.finish()
             })
             .min()
-            .hash(state);
+            .unwrap()
     }
 }
 
-impl PartialEq for Model {
-    fn eq(&self, other: &Self) -> bool {
-        // TODO: optimize (put hash in struct?)
-        self.rotations()
-            .iter()
-            .map(|rot| {
-                let mut hash = DefaultHasher::new();
-                rot.data.hash(&mut hash);
-                hash.finish()
-            })
-            .min()
-            == other
-                .rotations()
-                .iter()
-                .map(|rot| {
-                    let mut hash = DefaultHasher::new();
-                    rot.data.hash(&mut hash);
-                    hash.finish()
-                })
-                .min()
-    }
-}
-
-fn next(prev: &HashSet<Model>) -> HashSet<Model> {
-    let mut set = HashSet::new();
+fn next(prev: &HashMap<u64, Model>) -> HashMap<u64, Model> {
+    let mut set = HashMap::new();
     if prev.is_empty() {
-        set.insert(Model::default());
+        set.insert(Model::default().hash(), Model::default());
     }
-    for model in prev {
+    for model in prev.values() {
         model.add_cubes(&mut set);
     }
     set
 }
 
 fn main() {
-    let mut map: HashSet<Model> = HashSet::new();
+    let mut map = HashMap::new();
     for n in 0.. {
         // println!("\n{:?}", map);
         println!("{}: {}", n, map.len().max(1));
