@@ -1,3 +1,7 @@
+#![feature(test)]
+
+extern crate test;
+
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     hash::{Hash, Hasher},
@@ -44,12 +48,12 @@ impl Model {
     fn add_cube(&self, (x, y, z): Coord, (xo, yo, zo): (i8, i8, i8)) -> Option<Self> {
         if x == 0 && xo < 0 || y == 0 && yo < 0 || z == 0 && zo < 0 {
             let mut model = self.translate((-xo, -yo, -zo));
-            return match model.data.binary_search(&(x, y, z)) {
-                Err(pos) => {
-                    model.data.insert(pos, (x, y, z));
+            return match model.data.contains(&(x, y, z)) {
+                false => {
+                    model.data.push((x, y, z));
                     Some(model)
                 }
-                Ok(_) => None,
+                true => None,
             };
         }
 
@@ -60,9 +64,9 @@ impl Model {
         );
 
         let mut data = self.data.clone();
-        match data.binary_search(&coord) {
-            Err(pos) => {
-                data.insert(pos, coord);
+        match data.contains(&coord) {
+            false => {
+                data.push(coord);
                 Some(Model {
                     max: (
                         u8::max(self.max.0, coord.0),
@@ -72,7 +76,7 @@ impl Model {
                     data,
                 })
             }
-            Ok(_) => None,
+            true => None,
         }
     }
     fn add_cubes(&self, set: &mut HashMap<u64, Model>) {
@@ -100,23 +104,17 @@ impl Model {
         let rotate_coord_y = |(x, y, z): Coord, (_, _, mz): Coord| (mz - z, y, x);
         let rotate_coord_z = |(x, y, z): Coord, (mx, _, _): Coord| (y, mx - x, z);
 
-        let sort = |mut v: Vec<Coord>| {
-            v.sort_unstable();
-            v
-        };
-
-        // TODO: can this be done quicker without having to resort?
         let rotate_x = |m: &Model| Model {
             max: (m.max.0, m.max.2, m.max.1),
-            data: sort(m.data.iter().map(|&c| rotate_coord_x(c, m.max)).collect()),
+            data: m.data.iter().map(|&c| rotate_coord_x(c, m.max)).collect(),
         };
         let rotate_y = |m: &Model| Model {
             max: (m.max.2, m.max.1, m.max.0),
-            data: sort(m.data.iter().map(|&c| rotate_coord_y(c, m.max)).collect()),
+            data: m.data.iter().map(|&c| rotate_coord_y(c, m.max)).collect(),
         };
         let rotate_z = |m: &Model| Model {
             max: (m.max.1, m.max.0, m.max.2),
-            data: sort(m.data.iter().map(|&c| rotate_coord_z(c, m.max)).collect()),
+            data: m.data.iter().map(|&c| rotate_coord_z(c, m.max)).collect(),
         };
 
         // 4 rotations around x-axis
@@ -182,17 +180,24 @@ impl Model {
     }
     fn hash(&self) -> u64 {
         // TODO: rotations do not have to be stored seperately
-        // TODO: can the voxel vec be hashed without being sorted?
         self.rotations()
             .iter()
             .map(|rot| {
-                let mut hash = DefaultHasher::new();
-                rot.data.hash(&mut hash);
-                hash.finish()
+                let mut hash = 0;
+                for &coord in rot.data.iter() {
+                    hash ^= hash_coord(coord);
+                }
+                hash
             })
             .min()
             .unwrap()
     }
+}
+
+fn hash_coord(coord: Coord) -> u64 {
+    let mut hash = DefaultHasher::new();
+    coord.hash(&mut hash);
+    hash.finish()
 }
 
 fn next(prev: &HashMap<u64, Model>) -> HashMap<u64, Model> {
@@ -204,6 +209,24 @@ fn next(prev: &HashMap<u64, Model>) -> HashMap<u64, Model> {
         model.add_cubes(&mut set);
     }
     set
+}
+
+#[cfg(test)]
+mod tests {
+    use test::Bencher;
+
+    use super::*;
+
+    #[bench]
+    fn seven(b: &mut Bencher) {
+        b.iter(|| {
+            let mut map = HashMap::new();
+            for _ in 0..7 {
+                map = next(&map);
+            }
+            assert!(map.len() == 1023);
+        });
+    }
 }
 
 fn main() {
