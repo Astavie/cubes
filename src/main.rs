@@ -3,8 +3,10 @@
 extern crate test;
 
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
+    collections::{hash_map::DefaultHasher, HashSet},
+    fs::{self, File},
     hash::{Hash, Hasher},
+    io::{BufReader, BufWriter, Read, Write},
 };
 
 type Coord = (u8, u8, u8);
@@ -79,21 +81,25 @@ impl Model {
             true => None,
         }
     }
-    fn add_cubes(&self, set: &mut HashMap<u64, Model>) {
-        let insert = |s: &mut HashMap<u64, Model>, o: Option<Model>| match o {
+    fn add_cubes(&self, set: &mut HashSet<u64>, file: &mut impl Write) {
+        let mut insert = |o: Option<Model>| match o {
             Some(m) => {
-                s.insert(m.hash(), m);
+                if set.insert(m.hash()) {
+                    for coord in m.data {
+                        file.write(&[coord.0, coord.1, coord.2]).unwrap();
+                    }
+                }
             }
             None => {}
         };
 
         for &cube in self.data.iter() {
-            insert(set, self.add_cube(cube, (1, 0, 0)));
-            insert(set, self.add_cube(cube, (-1, 0, 0)));
-            insert(set, self.add_cube(cube, (0, 1, 0)));
-            insert(set, self.add_cube(cube, (0, -1, 0)));
-            insert(set, self.add_cube(cube, (0, 0, 1)));
-            insert(set, self.add_cube(cube, (0, 0, -1)));
+            insert(self.add_cube(cube, (1, 0, 0)));
+            insert(self.add_cube(cube, (-1, 0, 0)));
+            insert(self.add_cube(cube, (0, 1, 0)));
+            insert(self.add_cube(cube, (0, -1, 0)));
+            insert(self.add_cube(cube, (0, 0, 1)));
+            insert(self.add_cube(cube, (0, 0, -1)));
         }
     }
     #[rustfmt::skip]
@@ -141,15 +147,48 @@ fn hash_coords(coords: impl Iterator<Item = Coord>) -> u64 {
     hash
 }
 
-fn next(prev: &HashMap<u64, Model>) -> HashMap<u64, Model> {
-    let mut set = HashMap::new();
-    if prev.is_empty() {
-        set.insert(Model::default().hash(), Model::default());
+fn next(prev: impl Iterator<Item = Model>, n: u64) -> (u64, String) {
+    let path = "model".to_string() + &n.to_string();
+    let file = File::create(path.clone()).unwrap();
+    let mut file = BufWriter::new(file);
+
+    let mut set = HashSet::new();
+    for model in prev {
+        model.add_cubes(&mut set, &mut file);
     }
-    for model in prev.values() {
-        model.add_cubes(&mut set);
+
+    file.flush().unwrap();
+    drop(file);
+
+    (fs::metadata(path.clone()).unwrap().len() / (n * 3), path)
+}
+
+struct ModelReader(BufReader<File>, u64);
+
+impl Iterator for ModelReader {
+    type Item = Model;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let size = self.1;
+        let mut model = Model {
+            max: (0, 0, 0),
+            data: Vec::new(),
+        };
+
+        for _ in 0..size {
+            let mut buf = [0; 3];
+            match self.0.read_exact(&mut buf) {
+                Ok(_) => (),
+                Err(_) => None?,
+            }
+            model.max.0 = model.max.0.max(buf[0]);
+            model.max.1 = model.max.1.max(buf[1]);
+            model.max.2 = model.max.2.max(buf[2]);
+            model.data.push((buf[0], buf[1], buf[2]));
+        }
+
+        Some(model)
     }
-    set
 }
 
 #[cfg(test)]
@@ -161,20 +200,27 @@ mod tests {
     #[bench]
     fn seven(b: &mut Bencher) {
         b.iter(|| {
-            let mut map = HashMap::new();
-            for _ in 0..7 {
-                map = next(&map);
+            let vec = vec![Model::default()];
+            let (_, mut path) = next(vec.into_iter(), 2);
+            for n in 3..7 {
+                let f = ModelReader(BufReader::new(File::open(path).unwrap()), n - 1);
+                let d = next(f, n);
+                path = d.1;
             }
-            assert!(map.len() == 1023);
+            let f = ModelReader(BufReader::new(File::open(path).unwrap()), 6);
+            let d = next(f, 7);
+            assert_eq!(d.0, 1023);
         });
     }
 }
 
 fn main() {
-    let mut map = HashMap::new();
-    for n in 0.. {
-        // println!("\n{:?}", map);
-        println!("{}: {}", n, map.len().max(1));
-        map = next(&map);
+    let vec = vec![Model::default()];
+    let (_, mut path) = next(vec.into_iter(), 2);
+    for n in 3.. {
+        let f = ModelReader(BufReader::new(File::open(path).unwrap()), n - 1);
+        let d = next(f, n);
+        path = d.1;
+        println!("{}: {}", n, d.0);
     }
 }

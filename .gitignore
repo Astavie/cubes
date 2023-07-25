@@ -1,6 +1,7 @@
 /target
 .envrc
 .direnv
+model*
 
 
 # Added by cargo
