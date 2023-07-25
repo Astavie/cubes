@@ -96,108 +96,49 @@ impl Model {
             insert(set, self.add_cube(cube, (0, 0, -1)));
         }
     }
-    fn rotations(&self) -> Vec<Model> {
-        let mut rotations = Vec::with_capacity(24);
-
-        // Define rotation functions for each axis
-        let rotate_coord_x = |(x, y, z): Coord, (_, my, _): Coord| (x, z, my - y);
-        let rotate_coord_y = |(x, y, z): Coord, (_, _, mz): Coord| (mz - z, y, x);
-        let rotate_coord_z = |(x, y, z): Coord, (mx, _, _): Coord| (y, mx - x, z);
-
-        let rotate_x = |m: &Model| Model {
-            max: (m.max.0, m.max.2, m.max.1),
-            data: m.data.iter().map(|&c| rotate_coord_x(c, m.max)).collect(),
-        };
-        let rotate_y = |m: &Model| Model {
-            max: (m.max.2, m.max.1, m.max.0),
-            data: m.data.iter().map(|&c| rotate_coord_y(c, m.max)).collect(),
-        };
-        let rotate_z = |m: &Model| Model {
-            max: (m.max.1, m.max.0, m.max.2),
-            data: m.data.iter().map(|&c| rotate_coord_z(c, m.max)).collect(),
-        };
-
-        // 4 rotations around x-axis
-        let rot0 = self.clone();
-        let rot1 = rotate_x(&rot0);
-        let rot2 = rotate_x(&rot1);
-        let rot3 = rotate_x(&rot2);
-        rotations.push(rot0);
-        rotations.push(rot1);
-        rotations.push(rot2);
-        rotations.push(rot3);
-
-        // rotate 180 around y-axis
-        // 4 rotations around x-axis
-        let rot0 = rotate_y(&rotate_y(self));
-        let rot1 = rotate_x(&rot0);
-        let rot2 = rotate_x(&rot1);
-        let rot3 = rotate_x(&rot2);
-        rotations.push(rot0);
-        rotations.push(rot1);
-        rotations.push(rot2);
-        rotations.push(rot3);
-
-        // rotate 90/270 around y-axis
-        // 8 rotations around z-axis
-        let rot0 = rotate_y(self);
-        let rot1 = rotate_z(&rot0);
-        let rot2 = rotate_z(&rot1);
-        let rot3 = rotate_z(&rot2);
-        rotations.push(rot0);
-        rotations.push(rot1);
-        rotations.push(rot2);
-        rotations.push(rot3);
-        let rot0 = rotate_y(&rotate_y(&rotate_y(self)));
-        let rot1 = rotate_z(&rot0);
-        let rot2 = rotate_z(&rot1);
-        let rot3 = rotate_z(&rot2);
-        rotations.push(rot0);
-        rotations.push(rot1);
-        rotations.push(rot2);
-        rotations.push(rot3);
-
-        // rotate 90/270 around z-axis
-        // 8 rotations around y-axis
-        let rot0 = rotate_z(self);
-        let rot1 = rotate_y(&rot0);
-        let rot2 = rotate_y(&rot1);
-        let rot3 = rotate_y(&rot2);
-        rotations.push(rot0);
-        rotations.push(rot1);
-        rotations.push(rot2);
-        rotations.push(rot3);
-        let rot0 = rotate_z(&rotate_z(&rotate_z(self)));
-        let rot1 = rotate_y(&rot0);
-        let rot2 = rotate_y(&rot1);
-        let rot3 = rotate_y(&rot2);
-        rotations.push(rot0);
-        rotations.push(rot1);
-        rotations.push(rot2);
-        rotations.push(rot3);
-
-        rotations
-    }
+    #[rustfmt::skip]
     fn hash(&self) -> u64 {
-        // TODO: rotations do not have to be stored seperately
-        self.rotations()
-            .iter()
-            .map(|rot| {
-                let mut hash = 0;
-                for &coord in rot.data.iter() {
-                    hash ^= hash_coord(coord);
-                }
-                hash
-            })
-            .min()
-            .unwrap()
+        let mut hash = u64::MAX;
+
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (p.0, p.1, p.2))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (p.0, self.max.2 - p.2, p.1))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (p.0, self.max.1 - p.1, self.max.2 - p.2))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (p.0, p.2, self.max.1 - p.1))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (self.max.0 - p.0, p.1, self.max.2 - p.2))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (self.max.0 - p.0, p.2, p.1))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (self.max.0 - p.0, self.max.1 - p.1, p.2))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (self.max.0 - p.0, self.max.2 - p.2, self.max.1 - p.1))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (p.1, p.0, self.max.2 - p.2))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (p.1, p.2, p.0))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (p.1, self.max.0 - p.0, p.2))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (p.1, self.max.2 - p.2, self.max.0 - p.0))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (self.max.1 - p.1, p.0, p.2))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (self.max.1 - p.1, self.max.2 - p.2, p.0))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (self.max.1 - p.1, self.max.0 - p.0, self.max.2 - p.2))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (self.max.1 - p.1, p.2, self.max.0 - p.0))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (p.2, p.1, self.max.0 - p.0))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (p.2, p.0, p.1))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (p.2, self.max.1 - p.1, p.0))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (p.2, self.max.0 - p.0, self.max.1 - p.1))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (self.max.2 - p.2, p.1, p.0))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (self.max.2 - p.2, self.max.0 - p.0, p.1))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (self.max.2 - p.2, self.max.1 - p.1, self.max.0 - p.0))));
+        hash = hash.min(hash_coords(self.data.iter().map(|p| (self.max.2 - p.2, p.0, self.max.1 - p.1))));
+
+        hash
     }
 }
 
-fn hash_coord(coord: Coord) -> u64 {
-    let mut hash = DefaultHasher::new();
-    coord.hash(&mut hash);
-    hash.finish()
+fn hash_coords(coords: impl Iterator<Item = Coord>) -> u64 {
+    let mut hash = 0;
+    for coord in coords {
+        hash ^= {
+            let mut hash = DefaultHasher::new();
+            coord.hash(&mut hash);
+            hash.finish()
+        };
+    }
+    hash
 }
 
 fn next(prev: &HashMap<u64, Model>) -> HashMap<u64, Model> {
